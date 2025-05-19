@@ -27,38 +27,10 @@ jobs:
         uses: ./.github/actions/build-wsl-tarball
         with:
           config: default
-          filename: nixos-wsl.tar.gz
+          filename: nixos.wsl
 
       - name: Upload Tarball 📤
         uses: actions/upload-artifact@v4
         with:
           name: tarball
-          path: nixos-wsl.tar.gz
-
-  launcher:
-    name: Launcher 🛠️
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup MSBuild 🧰
-        uses: ./.github/actions/setup-msbuild
-
-      - name: Set Versions 🏷️
-        uses: ./.github/actions/version
-
-      - name: Build Launcher
-        run: |
-          cd Launcher
-          dotnet publish --self-contained -r win-x64 -c Release -p:ContinuousIntegrationBuild=true -p:Deterministic=true --output Launcher\pkg Launcher
-
-      - name: Upload Launcher 📤
-        uses: actions/upload-artifact@v4
-        with:
-          name: launcher-bin
-          path: |
-            Launcher/Launcher/obj
-            Launcher/Launcher/pkg
+          path: nixos.wsl

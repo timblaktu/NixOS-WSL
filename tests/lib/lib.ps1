@@ -47,7 +47,7 @@ class Distro {
 
   [string]FindTarball() {
     # Check if a fresh tarball exists in result, otherwise try one in the current directory
-    $tarball = "./nixos-wsl.tar.gz"
+    $tarball = "./nixos.wsl"
     if (!(Test-Path $tarball)) {
       throw "Could not find the tarball! Run nix build first, or place one in the current directory."
     }
@@ -55,7 +55,7 @@ class Distro {
     return $tarball
   }
 
-  [void]InstallConfig([string]$path) {
+  [void]InstallConfig([string]$path, [string]$operation) {
     Write-Host "Installing config: $path"
 
     # Copy the new config
@@ -63,13 +63,14 @@ class Distro {
     $LASTEXITCODE | Should -Be 0
 
     # Rebuild
-    $this.Launch("sh -c 'sudo nixos-rebuild switch < /dev/null'")
+    $this.Launch("sh -c 'sudo nixos-rebuild $operation < /dev/null'")
     $LASTEXITCODE | Should -Be 0
 
     Write-Host "Config installed successfully"
   }
 
   [void]Shutdown() {
+    Write-Host "> [shutdown]"
     & wsl.exe -t $this.id
     if ($LASTEXITCODE -ne 0) {
       throw "Failed to stop distro"
@@ -81,6 +82,8 @@ class Distro {
     if ($LASTEXITCODE -ne 0) {
       throw "Failed to unregister distro"
     }
-    Remove-Item $this.tempdir -Recurse -Force
+    if (Test-Path $this.tempdir) {
+      Remove-Item $this.tempdir -Recurse -Force
+    }
   }
 }

@@ -14,7 +14,7 @@ with lib; {
         exec ${pkgs.bashInteractive}/bin/sh "$@"
       '';
     in
-    mkIf (cfg.enable && cfg.nativeSystemd) {
+    mkIf (cfg.enable) {
 
       system.build.nativeUtils = pkgs.callPackage ../../../utils { };
 
@@ -27,6 +27,10 @@ with lib; {
       };
 
       system.activationScripts = {
+        createBootedSystemSymlink = stringAfter [ "specialfs" "users" "groups" ] ''
+          echo "setting up /run/booted-system..."
+          [[ -e /run/booted-system ]] || ln -sfn "$(readlink -f "$systemConfig")" /run/booted-system
+        '';
         shimSystemd = stringAfter [ ] ''
           echo "setting up /sbin/init shim..."
           mkdir -p /sbin

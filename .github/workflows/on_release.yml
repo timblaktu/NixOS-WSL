@@ -9,19 +9,9 @@ jobs:
     name: Build 🛠️
     uses: ./.github/workflows/run_build.yml
 
-  package:
-    name: Package 📦
-    uses: ./.github/workflows/run_package.yml
-    needs:
-      - build
-    secrets:
-      APPX_SIGNING_CERT: ${{ secrets.APPX_SIGNING_CERT }}
-      CERT_ALGORITHM: ${{ secrets.CERT_ALGORITHM }}
-
   release:
     needs:
       - build
-      - package
     name: Create Release 📢
     runs-on: ubuntu-latest
     steps:
@@ -30,27 +20,15 @@ jobs:
         with:
           name: tarball
 
-      - name: Download appx 📥
-        uses: actions/download-artifact@v4
-        with:
-          name: appx
-
-      - name: Rename appx ✏️
-        run: mv */*.msixbundle NixOS-WSL.msixbundle
-
       - name: Generate Checksums 🔑
         run: |
-          for x in *.{tar.gz,msixbundle}; do
-            sha256sum $x > ${x}.sha256
-          done
+          sha256sum nixos.wsl > nixos.wsl.sha256
 
       - name: Attach to Release 📎
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            nixos-wsl.tar.gz
-            nixos-wsl.tar.gz.sha256
-            NixOS-WSL.msixbundle
-            NixOS-WSL.msixbundle.sha256
+            nixos.wsl
+            nixos.wsl.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

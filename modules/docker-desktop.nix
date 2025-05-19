@@ -16,21 +16,21 @@ with builtins; with lib; {
     mkIf (config.wsl.enable && cfg.enable) {
 
       environment.systemPackages = with pkgs; [
-        docker
-        docker-compose
+        # Compose links to Docker Desktop by opening 'docker-desktop://' URLs
+        # through xdg-open.
+        xdg-utils
       ];
 
-      systemd.services.docker-desktop-proxy = {
-        description = "Docker Desktop proxy";
-        script = ''
-          ${config.wsl.wslConf.automount.root}/wsl/docker-desktop/docker-desktop-user-distro proxy --docker-desktop-root ${config.wsl.wslConf.automount.root}/wsl/docker-desktop
-        '';
-        wantedBy = [ "multi-user.target" ];
-        serviceConfig = {
-          Restart = "on-failure";
-          RestartSec = "30s";
-        };
-      };
+      wsl.extraBin = with pkgs; [
+        # Required unconditionally to check that the WSL environment is conformant.
+        { src = "${coreutils}/bin/cat"; }
+        { src = "${coreutils}/bin/whoami"; }
+        # Required to create the 'docker' group and add the WSL user to it.
+        # This group and its user membership are managed by NixOS below but we
+        # create those symlinks anyway for robustness.
+        { src = "${shadow}/bin/groupadd"; }
+        { src = "${shadow}/bin/usermod"; }
+      ];
 
       users.groups.docker.members = [
         config.wsl.defaultUser

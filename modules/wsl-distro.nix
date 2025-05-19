@@ -15,6 +15,12 @@ in
       internal = true;
       description = "Package to be linked to /bin/sh. Mainly useful to be re-used by other modules like envfs.";
     };
+    binShExe = mkOption {
+      type = str;
+      internal = true;
+      description = "Path to the shell executable to be linked to /bin/sh";
+      default = "${config.wsl.binShPkg}/bin/sh";
+    };
     defaultUser = mkOption {
       type = str;
       default = "nixos";
@@ -71,7 +77,7 @@ in
     # WSL does not support virtual consoles
     console.enable = false;
 
-    hardware.opengl = {
+    hardware.graphics = {
       enable = true; # Enable GPU acceleration
 
       extraPackages = mkIf cfg.useWindowsDriver [
@@ -119,26 +125,22 @@ in
       where = "/tmp/.X11-unix/X0";
       type = "none";
       options = "bind";
-      wantedBy = [ "local-fs.target" ];
       after = [ "nixos-wsl-migration-x11mount.service" ];
       wants = after;
+      wantedBy = [ "local-fs.target" ];
     }];
     # Remove symbolic link for WSLg X11 socket, which was created by NixOS-WSL until 2024-02-24
     systemd.services.nixos-wsl-migration-x11mount = {
       description = "Remove /tmp/.X11-unix symlink if present";
-      before = [ "tmp-.X11\x2dunix-X0.mount" ];
-      unitConfig.ConditionPathIsSymbolicLink = "/tmp/.X11-unix";
+      unitConfig = {
+        ConditionPathIsSymbolicLink = "/tmp/.X11-unix";
+        DefaultDependencies = "no";
+      };
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
         ExecStart = "${pkgs.coreutils}/bin/rm /tmp/.X11-unix";
       };
-    };
-
-    # Prevent systemd from mounting a tmpfs over the runtime dir (and thus hiding the wayland socket)
-    systemd.services."user-runtime-dir@" = {
-      overrideStrategy = "asDropin";
-      unitConfig.ConditionPathExists = "!/run/user/%i";
     };
 
     # dhcp is handled by windows
@@ -194,13 +196,24 @@ in
 
     # require people to use lib.mkForce to make it harder to brick their installation
     wsl = {
-      populateBin = true;
+      populateBin = mkIf config.services.envfs.enable false;
       extraBin = [
         { src = "/init"; name = "wslpath"; }
-        { src = "${cfg.binShPkg}/bin/sh"; name = "sh"; }
+        { src = "${cfg.binShExe}"; name = "sh"; }
         { src = "${pkgs.util-linux}/bin/mount"; }
       ];
     };
+
+    services.envfs.extraFallbackPathCommands =
+      concatStringsSep "\n"
+        (map
+          (entry:
+            if entry.copy
+            then "cp -f ${entry.src} $out/${entry.name}"
+            else "ln -sf ${entry.src} $out/${entry.name}"
+          )
+          cfg.extraBin
+        );
 
     warnings = flatten [
       (optional (config.services.resolved.enable && config.wsl.wslConf.network.generateResolvConf)

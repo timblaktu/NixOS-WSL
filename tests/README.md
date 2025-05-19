@@ -13,8 +13,8 @@ Please note that the tests are not compatible with Windows PowerShell, but requi
 ### Running the Tests
 
 If you haven't already, [install Pester](https://pester.dev/docs/introduction/installation/).  
-The tests require a "default" (formerly "modern") `nixos-wsl.tar.gz` to be present in the current working directory, which can be built with
-`sudo nix run .#nixosConfigurations.default.config.system.build.tarballBuilder -- nixos-wsl.tar.gz`.
+The tests require a "default" `nixos.wsl` to be present in the current working directory, which can be built with
+`sudo nix run .#nixosConfigurations.default.config.system.build.tarballBuilder -- nixos.wsl`.
 
 Once everything is in place, run the test by running the following in PowerShell at the root of this repo:
 
@@ -39,6 +39,6 @@ BeforeAll {
 - A Distro object has the following methods:
   - `Launch($command)`: Runs the specified command inside the distro. Returns the command output
   - `GetPath($path)`: Returns the path inside the distro, that points to the specified file on the host.
-  - `InstallConfig($path)`: Installs a nix-file as the systems `configuration.nix`.
+  - `InstallConfig($path, $operation)`: Installs a nix-file as the systems `configuration.nix`. Operation is one of the supported operations of `nixos-rebuild` 
   - `Shutdown()`: End all processes running in the distro
   - `Uninstall()`: Stop and then delete the distro from the system. This should be called in an AfterEach or AfterAll block, so that the test does not leave it on the system.
