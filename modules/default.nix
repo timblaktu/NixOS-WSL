@@ -13,6 +13,7 @@
     ./version.nix
     ./welcome.nix
     ./wsl-conf.nix
+    ./wsl-cross-instance-mount.nix
     ./wsl-distro.nix
 
     (lib.mkRemovedOptionModule [ "wsl" "docker-native" ]
