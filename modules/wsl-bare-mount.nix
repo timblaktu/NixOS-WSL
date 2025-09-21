@@ -225,12 +225,10 @@ in {
             DefaultDependencies = false;
           };
 
-          mountConfig = {
-            What = "/dev/disk/by-id/${disk.devicePattern}";
-            Where = disk.filesystem.mountPoint;
-            Type = disk.filesystem.fsType;
-            Options = concatStringsSep "," (disk.filesystem.options ++ [ "nofail" "x-systemd.device-timeout=10s" ]);
-          };
+          where = disk.filesystem.mountPoint;
+          what = "/dev/disk/by-id/${disk.devicePattern}";
+          type = disk.filesystem.fsType;
+          options = concatStringsSep "," (disk.filesystem.options ++ [ "nofail" "x-systemd.device-timeout=10s" ]);
         }
       ) cfg.disks
     );
