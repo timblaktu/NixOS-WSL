@@ -8,6 +8,7 @@
     ./usbip.nix
     ./version.nix
     ./welcome.nix
+    ./wsl-bare-mount.nix
     ./wsl-conf.nix
     ./wsl-distro.nix
 
