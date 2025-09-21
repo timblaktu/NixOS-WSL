@@ -16,25 +16,6 @@ let
     }"
   '';
 
-  # Generate systemd mount unit for filesystem mounting
-  makeMountUnit = disk: nameValuePair "${strings.replaceStrings ["/"] ["-"] (removePrefix "/" disk.filesystem.mountPoint)}.mount" {
-    description = "Mount ${disk.name} filesystem";
-    after = [ "local-fs-pre.target" ];
-    before = [ "local-fs.target" ];
-    wantedBy = [ "local-fs.target" ];
-
-    unitConfig = {
-      DefaultDependencies = false;
-    };
-
-    mountConfig = {
-      What = "/dev/disk/by-id/${disk.devicePattern}";
-      Where = disk.filesystem.mountPoint;
-      Type = disk.filesystem.fsType;
-      Options = concatStringsSep "," (disk.filesystem.options ++ [ "nofail" "x-systemd.device-timeout=10s" ]);
-    };
-  };
-
   # Generate manual mount command script
   manualMountScript = pkgs.writeShellScriptBin "wsl-bare-mount" ''
     set -euo pipefail
@@ -232,10 +213,25 @@ in {
     );
 
     # Create systemd mount units for filesystems
-    systemd.mounts = mkMerge (
+    systemd.mounts = lib.flatten (
       map (disk: 
-        mkIf (disk.filesystem != null) 
-        (makeMountUnit disk)
+        optional (disk.filesystem != null) {
+          description = "Mount ${disk.name} filesystem";
+          after = [ "local-fs-pre.target" ];
+          before = [ "local-fs.target" ];
+          wantedBy = [ "local-fs.target" ];
+
+          unitConfig = {
+            DefaultDependencies = false;
+          };
+
+          mountConfig = {
+            What = "/dev/disk/by-id/${disk.devicePattern}";
+            Where = disk.filesystem.mountPoint;
+            Type = disk.filesystem.fsType;
+            Options = concatStringsSep "," (disk.filesystem.options ++ [ "nofail" "x-systemd.device-timeout=10s" ]);
+          };
+        }
       ) cfg.disks
     );
 
