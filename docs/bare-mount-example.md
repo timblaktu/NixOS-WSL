@@ -17,9 +17,13 @@ Bare mounts provide:
 
 ## Prerequisites
 
-1. Identify your disk's serial number from Windows PowerShell (as Administrator):
-   ```powershell
-   Get-PhysicalDisk | Select-Object FriendlyName, SerialNumber
+1. Identify your disk's UUID from WSL after a manual bare mount:
+   ```bash
+   # First, manually bare mount the disk from Windows (as Administrator):
+   wsl --mount \\.\PHYSICALDRIVE2 --bare
+   
+   # Then in WSL, find the UUID:
+   lsblk -o NAME,SIZE,TYPE,FSTYPE,UUID
    ```
 
 2. Ensure the disk is not mounted in Windows (for exclusive access)
@@ -27,42 +31,40 @@ Bare mounts provide:
 3. Format the disk with a Linux filesystem if needed (from WSL):
    ```bash
    # After bare mounting, format if needed
-   sudo mkfs.ext4 /dev/disk/by-id/nvme-YourDiskPattern
+   sudo mkfs.ext4 /dev/sdc1  # Replace with your device
+   # Then get the UUID again:
+   sudo blkid /dev/sdc1
    ```
 
 ## Basic Configuration
 
-### Simple Bare Mount (No Filesystem)
+### Simple Bare Mount
 
 ```nix
 {
   wsl.bareMounts = {
     enable = true;
-    disks = [{
-      name = "data-disk";
-      serialNumber = "YOUR_SERIAL_NUMBER_HERE";
-      devicePattern = "nvme-*YOUR_DISK_MODEL*";
-      filesystem = null;  # Just bare mount, no automatic filesystem mounting
+    mounts = [{
+      diskUuid = "e030a5d0-fd70-4823-8f51-e6ea8c145fe6";
+      mountPoint = "/mnt/wsl/data-disk";
+      fsType = "ext4";
+      options = [ "defaults" "noatime" ];
     }];
   };
 }
 ```
 
-### With Automatic Filesystem Mounting
+### With Multiple Mount Options
 
 ```nix
 {
   wsl.bareMounts = {
     enable = true;
-    disks = [{
-      name = "storage";
-      serialNumber = "E823_8FA6_BF53_0001_001B_448B_4ED0_B0F4.";
-      devicePattern = "nvme-Samsung_SSD_990_PRO_4TB_*";
-      filesystem = {
-        mountPoint = "/mnt/wsl/storage";
-        fsType = "ext4";
-        options = [ "defaults" "noatime" "nodiratime" ];
-      };
+    mounts = [{
+      diskUuid = "e823a8fa-bf53-0001-001b-448b4ed0b0f4";
+      mountPoint = "/mnt/wsl/storage";
+      fsType = "ext4";
+      options = [ "defaults" "noatime" "nodiratime" ];
     }];
   };
 }
@@ -74,26 +76,18 @@ Bare mounts provide:
 {
   wsl.bareMounts = {
     enable = true;
-    disks = [
+    mounts = [
       {
-        name = "fast-storage";
-        serialNumber = "SERIAL_1";
-        devicePattern = "nvme-Samsung_*";
-        filesystem = {
-          mountPoint = "/mnt/fast";
-          fsType = "ext4";
-          options = [ "defaults" "noatime" ];
-        };
+        diskUuid = "abc12345-def6-7890-1234-567890abcdef";
+        mountPoint = "/mnt/fast";
+        fsType = "ext4";
+        options = [ "defaults" "noatime" ];
       }
       {
-        name = "bulk-storage";
-        serialNumber = "SERIAL_2";
-        devicePattern = "scsi-WD_*";
-        filesystem = {
-          mountPoint = "/mnt/bulk";
-          fsType = "xfs";
-          options = [ "defaults" ];
-        };
+        diskUuid = "fedcba98-7654-3210-0987-654321fedcba";
+        mountPoint = "/mnt/bulk";
+        fsType = "xfs";
+        options = [ "defaults" ];
       }
     ];
   };
@@ -108,15 +102,11 @@ For maximum Nix performance, you can bind mount from bare storage:
 {
   wsl.bareMounts = {
     enable = true;
-    disks = [{
-      name = "nix-storage";
-      serialNumber = "YOUR_SERIAL";
-      devicePattern = "nvme-*";
-      filesystem = {
-        mountPoint = "/mnt/wsl/nix-storage";
-        fsType = "ext4";
-        options = [ "defaults" "noatime" ];
-      };
+    mounts = [{
+      diskUuid = "e030a5d0-fd70-4823-8f51-e6ea8c145fe6";
+      mountPoint = "/mnt/wsl/nix-storage";
+      fsType = "ext4";
+      options = [ "defaults" "noatime" ];
     }];
   };
 
@@ -129,19 +119,16 @@ For maximum Nix performance, you can bind mount from bare storage:
 }
 ```
 
-## Manual Management
+## Windows-Side Script
 
-The module provides a `wsl-bare-mount` command for manual management:
+After configuring bare mounts, rebuild your NixOS configuration. The module will:
+1. Generate a PowerShell script at `%USERPROFILE%\.nixos-wsl\bare-mount.ps1`
+2. Create systemd mount units for the Linux side
+3. Provide boot-time validation
 
-```bash
-# Check status of configured disks
-wsl-bare-mount status
-
-# Manually mount all configured disks
-wsl-bare-mount mount
-
-# Unmount all configured disks
-wsl-bare-mount unmount
+Run the PowerShell script as Administrator before starting WSL:
+```powershell
+& "$env:USERPROFILE\.nixos-wsl\bare-mount.ps1"
 ```
 
 ## Troubleshooting
@@ -149,16 +136,17 @@ wsl-bare-mount unmount
 ### Disk Not Found
 
 If the disk isn't found at boot:
-1. Verify the serial number matches exactly (including trailing dots)
+1. Verify the UUID matches your disk's filesystem UUID (not partition UUID)
 2. Check Windows Event Viewer for mount errors
 3. Ensure the disk isn't in use by Windows
-4. Try manual mounting with `wsl-bare-mount mount`
+4. Run the PowerShell script manually to see detailed error messages
 
 ### Mount Fails
 
-1. Check the device pattern matches: `ls /dev/disk/by-id/ | grep YOUR_PATTERN`
+1. Check the UUID exists: `ls -la /dev/disk/by-uuid/`
 2. Verify filesystem type is correct
-3. Check systemd journal: `journalctl -u '*.mount'`
+3. Check systemd journal: `journalctl -xe | grep mount`
+4. Ensure the Windows-side script was run successfully
 
 ### Performance Not Improved
 
@@ -166,16 +154,23 @@ If the disk isn't found at boot:
 2. Verify with `mount | grep YOUR_MOUNT_POINT`
 3. Test with: `dd if=/dev/zero of=/YOUR_MOUNT/test.img bs=1M count=1000`
 
-## Device Pattern Examples
+## Finding Disk UUIDs
 
-The `devicePattern` should match entries in `/dev/disk/by-id/`:
+To find the correct UUID for your disk:
 
-- NVMe: `nvme-Samsung_SSD_990_PRO_4TB_*`
-- SATA SSD: `ata-Samsung_SSD_870_EVO_*`
-- SCSI/SAS: `scsi-3600508b1001c*`
-- USB (not recommended): `usb-WD_Elements_*`
+1. **Windows side**: Bare mount the disk
+   ```powershell
+   wsl --mount \\.\PHYSICALDRIVE2 --bare
+   ```
 
-Use wildcards (`*`) to handle minor variations in device naming.
+2. **WSL side**: List all UUIDs
+   ```bash
+   lsblk -o NAME,SIZE,FSTYPE,UUID
+   # or
+   ls -la /dev/disk/by-uuid/
+   ```
+
+3. Use the filesystem UUID (not the partition table UUID) in your configuration.
 
 ## Security Considerations
 
@@ -194,20 +189,16 @@ Complete example for a development machine with fast NVMe storage:
 {
   wsl.bareMounts = {
     enable = true;
-    disks = [{
-      name = "dev-storage";
-      serialNumber = "NVME_SERIAL_12345";
-      devicePattern = "nvme-Samsung_SSD_980_PRO_2TB_*";
-      filesystem = {
-        mountPoint = "/mnt/dev";
-        fsType = "ext4";
-        options = [ 
-          "defaults"
-          "noatime"      # Skip access time updates
-          "nodiratime"   # Skip directory access time updates
-          "lazytime"     # Batch timestamp updates
-        ];
-      };
+    mounts = [{
+      diskUuid = "12345678-90ab-cdef-1234-567890abcdef";
+      mountPoint = "/mnt/dev";
+      fsType = "ext4";
+      options = [ 
+        "defaults"
+        "noatime"      # Skip access time updates
+        "nodiratime"   # Skip directory access time updates
+        "lazytime"     # Batch timestamp updates
+      ];
     }];
   };
 

@@ -8,22 +8,18 @@
   # Test basic configuration
   wsl.bareMounts = {
     enable = true;
-    disks = [
+    mounts = [
       {
-        name = "test-disk-1";
-        serialNumber = "TEST_SERIAL_001";
-        devicePattern = "nvme-test-disk-1-*";
-        filesystem = null;  # Test bare mount without filesystem
+        diskUuid = "test-uuid-0001-0001-0001-000000000001";
+        mountPoint = "/mnt/wsl/test-disk-1";
+        fsType = "ext4";
+        options = [ "defaults" ];
       }
       {
-        name = "test-disk-2";
-        serialNumber = "TEST_SERIAL_002";
-        devicePattern = "nvme-test-disk-2-*";
-        filesystem = {
-          mountPoint = "/mnt/test";
-          fsType = "ext4";
-          options = [ "defaults" "noatime" ];
-        };
+        diskUuid = "test-uuid-0002-0002-0002-000000000002";
+        mountPoint = "/mnt/wsl/test-disk-2";
+        fsType = "ext4";
+        options = [ "defaults" "noatime" ];
       }
     ];
   };
