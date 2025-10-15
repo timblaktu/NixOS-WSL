@@ -97,6 +97,119 @@ let
     }
   '';
 
+  # Generate Task Scheduler XML for automatic mounting
+  generateTaskXml = ''
+    <?xml version="1.0" encoding="UTF-16"?>
+    <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+      <RegistrationInfo>
+        <Date>2025-01-01T00:00:00</Date>
+        <Author>NixOS-WSL</Author>
+        <Description>Automatically mount bare disks for WSL before WSL starts</Description>
+        <URI>\WSL\BareMountDisks</URI>
+      </RegistrationInfo>
+      <Triggers>
+        <LogonTrigger>
+          <Enabled>true</Enabled>
+        </LogonTrigger>
+      </Triggers>
+      <Principals>
+        <Principal id="Author">
+          <UserId>S-1-5-18</UserId>
+          <RunLevel>HighestAvailable</RunLevel>
+        </Principal>
+      </Principals>
+      <Settings>
+        <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+        <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+        <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+        <AllowHardTerminate>true</AllowHardTerminate>
+        <StartWhenAvailable>true</StartWhenAvailable>
+        <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+        <IdleSettings>
+          <StopOnIdleEnd>false</StopOnIdleEnd>
+          <RestartOnIdle>false</RestartOnIdle>
+        </IdleSettings>
+        <AllowStartOnDemand>true</AllowStartOnDemand>
+        <Enabled>true</Enabled>
+        <Hidden>false</Hidden>
+        <RunOnlyIfIdle>false</RunOnlyIfIdle>
+        <WakeToRun>false</WakeToRun>
+        <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
+        <Priority>7</Priority>
+      </Settings>
+      <Actions Context="Author">
+        <Exec>
+          <Command>powershell.exe</Command>
+          <Arguments>-ExecutionPolicy Bypass -WindowStyle Hidden -File "%USERPROFILE%\.nixos-wsl\bare-mount.ps1"</Arguments>
+        </Exec>
+      </Actions>
+    </Task>
+  '';
+
+  # Generate installer script for Task Scheduler
+  generateInstallerScript = ''
+    #Requires -Version 5.1
+    #Requires -RunAsAdministrator
+
+    # WSL Bare Mount Task Installer
+    # This script installs a scheduled task to automatically mount bare disks
+
+    $ErrorActionPreference = "Stop"
+
+    Write-Host "WSL Bare Mount Task Installer" -ForegroundColor Cyan
+    Write-Host "================================" -ForegroundColor Cyan
+
+    # Define paths
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    $mountScript = Join-Path $scriptDir "bare-mount.ps1"
+    $taskXml = Join-Path $scriptDir "bare-mount-task.xml"
+    $taskName = "WSL-BareMountDisks"
+
+    # Check if mount script exists
+    if (-not (Test-Path $mountScript)) {
+        Write-Host "ERROR: Mount script not found at: $mountScript" -ForegroundColor Red
+        exit 1
+    }
+
+    # Check if task XML exists
+    if (-not (Test-Path $taskXml)) {
+        Write-Host "ERROR: Task XML not found at: $taskXml" -ForegroundColor Red
+        exit 1
+    }
+
+    # Check if task already exists
+    $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    if ($existingTask) {
+        Write-Host "Task already exists. Updating..." -ForegroundColor Yellow
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+    }
+
+    # Register the task
+    try {
+        Register-ScheduledTask -TaskName $taskName -Xml (Get-Content $taskXml | Out-String) -Force
+        Write-Host "SUCCESS: Task '$taskName' installed successfully!" -ForegroundColor Green
+        
+        # Test run the task
+        Write-Host "`nTesting the task by running it once..." -ForegroundColor Yellow
+        Start-ScheduledTask -TaskName $taskName
+        
+        Start-Sleep -Seconds 3
+        
+        $taskInfo = Get-ScheduledTaskInfo -TaskName $taskName
+        if ($taskInfo.LastTaskResult -eq 0) {
+            Write-Host "SUCCESS: Test run completed successfully!" -ForegroundColor Green
+        } else {
+            Write-Host "WARNING: Test run completed with exit code: $($taskInfo.LastTaskResult)" -ForegroundColor Yellow
+        }
+        
+        Write-Host "`nThe task is now configured to run at user logon." -ForegroundColor Green
+        Write-Host "You can manage it through Task Scheduler (taskschd.msc)" -ForegroundColor Cyan
+    } catch {
+        Write-Host "ERROR: Failed to register task: $_" -ForegroundColor Red
+        exit 1
+    }
+  '';
+
   # Generate systemd service for validation
   validationService = {
     description = "Validate WSL Bare Mounts";
@@ -215,6 +328,16 @@ in {
         This helps catch configuration issues early.
       '';
     };
+
+    autoInstallTask = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Whether to automatically attempt to install the Windows Task Scheduler task
+        on activation. This requires running a PowerShell command as Administrator
+        and will prompt for UAC elevation. Set to true for fully automated setup.
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
@@ -244,21 +367,58 @@ in {
       mode = "0644";
     };
 
+    # Generate the Task Scheduler XML
+    environment.etc."nixos-wsl/bare-mount-task.xml" = mkIf cfg.generateScript {
+      text = generateTaskXml;
+      mode = "0644";
+    };
+
+    # Generate the installer script
+    environment.etc."nixos-wsl/install-bare-mount-task.ps1" = mkIf cfg.generateScript {
+      text = generateInstallerScript;
+      mode = "0644";
+    };
+
     # Validation service
     systemd.services.validate-wsl-bare-mounts = mkIf cfg.validateOnBoot validationService;
 
     # Copy script to Windows user profile on activation
     system.activationScripts.wsl-bare-mount-script = mkIf cfg.generateScript ''
-      WINDOWS_USER=$(${pkgs.coreutils}/bin/whoami)
+      # Get Windows username via cmd.exe (more reliable than whoami in WSL)
+      WINDOWS_USER=$(${pkgs.coreutils}/bin/cmd.exe /c "echo %USERNAME%" 2>/dev/null | ${pkgs.coreutils}/bin/tr -d '\r\n' || echo "")
+      
+      # Fallback to checking actual directories if cmd.exe fails
+      if [ -z "$WINDOWS_USER" ]; then
+        # Look for a user directory that exists and isn't Default/Public/etc
+        for dir in /mnt/c/Users/*; do
+          basename_dir=$(basename "$dir")
+          if [ -d "$dir" ] && [ "$basename_dir" != "Default" ] && [ "$basename_dir" != "Public" ] && [ "$basename_dir" != "All Users" ] && [ "$basename_dir" != "Default User" ] && [ "$basename_dir" != "WsiAccount" ]; then
+            WINDOWS_USER="$basename_dir"
+            break
+          fi
+        done
+      fi
+      
+      if [ -z "$WINDOWS_USER" ]; then
+        echo "ERROR: Could not determine Windows username"
+        exit 1
+      fi
+      
       WINDOWS_HOME="/mnt/c/Users/$WINDOWS_USER"
       WSL_DIR="$WINDOWS_HOME/.nixos-wsl"
 
       if [ -d "$WINDOWS_HOME" ]; then
-        echo "Installing WSL bare mount script to Windows profile..."
+        echo "Installing WSL bare mount scripts to Windows profile for user: $WINDOWS_USER"
         mkdir -p "$WSL_DIR"
 
-        # Copy the script
+        # Copy the mount script
         cp /etc/nixos-wsl/bare-mount.ps1 "$WSL_DIR/bare-mount.ps1" 2>/dev/null || true
+
+        # Copy the Task Scheduler XML
+        cp /etc/nixos-wsl/bare-mount-task.xml "$WSL_DIR/bare-mount-task.xml" 2>/dev/null || true
+
+        # Copy the installer script
+        cp /etc/nixos-wsl/install-bare-mount-task.ps1 "$WSL_DIR/install-bare-mount-task.ps1" 2>/dev/null || true
 
         # Create a simple batch file wrapper for easier execution
         cat > "$WSL_DIR/bare-mount.bat" <<'EOF'
@@ -267,11 +427,42 @@ in {
     pause
     EOF
 
-        echo "Mount script installed to: $WSL_DIR"
-        echo "Execute as Administrator before starting WSL:"
-        echo "  $WSL_DIR\\bare-mount.ps1"
+        # Create installer batch file
+        cat > "$WSL_DIR/install-task.bat" <<'EOF'
+    @echo off
+    echo This script will install a scheduled task to automatically mount bare disks
+    echo You must run this as Administrator
+    echo.
+    pause
+    powershell.exe -ExecutionPolicy Bypass -File "%~dp0install-bare-mount-task.ps1"
+    pause
+    EOF
+
+        echo "Mount scripts installed to: $WSL_DIR"
+        echo ""
+        echo "=== NEXT STEPS ==="
+        echo "1. For one-time mount, run as Administrator:"
+        echo "   $WSL_DIR\\bare-mount.ps1"
+        echo ""
+        echo "2. For automatic mounting on login, run as Administrator:"
+        echo "   $WSL_DIR\\install-bare-mount-task.ps1"
+        echo ""
+        echo "This will create a scheduled task that runs at user logon."
+        
+        ${optionalString cfg.autoInstallTask ''
+          echo ""
+          echo "=== AUTO-INSTALLING TASK SCHEDULER ==="
+          echo "Attempting to install the scheduled task automatically..."
+          echo "This will prompt for Administrator privileges..."
+          
+          # Try to auto-install the task (will trigger UAC prompt)
+          powershell.exe -Command "Start-Process powershell -ArgumentList '-ExecutionPolicy','Bypass','-File','$WSL_DIR\\install-bare-mount-task.ps1' -Verb RunAs -Wait" 2>/dev/null || {
+            echo "WARNING: Could not auto-install task. Please run manually:"
+            echo "  $WSL_DIR\\install-bare-mount-task.ps1"
+          }
+        ''}
       else
-        echo "Warning: Could not find Windows home directory"
+        echo "Warning: Could not find Windows home directory at $WINDOWS_HOME"
       fi
     '';
 
@@ -289,27 +480,42 @@ in {
           "  - ${mount.diskUuid} -> ${mount.mountPoint} (${mount.fsType})"
         ) cfg.mounts}
 
-        Setup Instructions:
-        -------------------
-        1. The mount script has been copied to:
-           %USERPROFILE%\.nixos-wsl\bare-mount.ps1
+        Automation Setup:
+        -----------------
+        The following scripts have been installed to %USERPROFILE%\.nixos-wsl\:
 
-        2. This script must be run as Administrator before WSL starts.
+        1. bare-mount.ps1 - Main mount script (run manually as Admin)
+        2. bare-mount-task.xml - Task Scheduler configuration
+        3. install-bare-mount-task.ps1 - Automatic task installer
+        4. bare-mount.bat - Batch wrapper for easy execution
+        5. install-task.bat - Batch wrapper for task installation
 
-        3. For automatic mounting, you can:
-           a. Add it to your Windows Task Scheduler
-           b. Call it from your terminal startup script
-           c. Create a Windows service
+        Quick Setup:
+        ------------
+        For automatic mounting on every Windows login:
+        1. Run as Administrator: %USERPROFILE%\.nixos-wsl\install-bare-mount-task.ps1
+        2. The task will be installed and tested automatically
+        3. Disks will mount before WSL starts on each login
 
-        4. To manually mount, run in an elevated PowerShell:
-           & "$env:USERPROFILE\.nixos-wsl\bare-mount.ps1"
+        Manual Mounting:
+        ----------------
+        Run in elevated PowerShell or Command Prompt:
+        %USERPROFILE%\.nixos-wsl\bare-mount.ps1
+
+        Task Management:
+        ----------------
+        - View/Edit task: Open Task Scheduler (taskschd.msc)
+        - Task name: WSL-BareMountDisks
+        - Task location: Task Scheduler Library\WSL
+        - To uninstall: Unregister-ScheduledTask -TaskName "WSL-BareMountDisks"
 
         Troubleshooting:
         ----------------
-        - Ensure the disk UUIDs match your Windows disk configuration
-        - The disks must not be in use by Windows
+        - Ensure the disk UUIDs match your Linux filesystem UUIDs (not Windows disk IDs)
+        - The disks must not be in use by Windows (unmount/eject first)
         - WSL must have permission to access raw disk devices
         - Check Event Viewer for WSL-related errors
+        - Run 'lsblk -o NAME,UUID' in WSL to verify disk UUIDs
 
         For more information, see:
         https://docs.microsoft.com/en-us/windows/wsl/wsl2-mount-disk
