@@ -11,6 +11,7 @@
     ./wsl-bare-mount.nix
     ./wsl-conf.nix
     ./wsl-distro.nix
+    ./wsl-plugin-config.nix
 
     (lib.mkRemovedOptionModule [ "wsl" "docker-native" ]
       "Additional workarounds are no longer required for Docker to work. Please use the standard `virtualisation.docker` NixOS options.")
