@@ -257,7 +257,8 @@ let
     '';
   };
 
-in {
+in
+{
   options.wsl.bareMounts = {
     enable = mkEnableOption "WSL bare disk mounting support";
 
@@ -300,7 +301,7 @@ in {
           };
         };
       });
-      default = [];
+      default = [ ];
       description = ''
         List of Windows disks to bare mount for use within WSL.
 
@@ -343,23 +344,27 @@ in {
   config = mkIf cfg.enable {
     assertions = [
       {
-        assertion = cfg.mounts != [];
+        assertion = cfg.mounts != [ ];
         message = "wsl.bareMounts.enable is true but no mounts are configured";
       }
     ];
 
     # Create mount points and systemd mount units
-    systemd.mounts = map (mount: {
-      what = "/dev/disk/by-uuid/${mount.diskUuid}";
-      where = mount.mountPoint;
-      type = mount.fsType;
-      options = concatStringsSep "," mount.options;
-      wantedBy = [ "multi-user.target" ];
-    }) cfg.mounts;
+    systemd.mounts = map
+      (mount: {
+        what = "/dev/disk/by-uuid/${mount.diskUuid}";
+        where = mount.mountPoint;
+        type = mount.fsType;
+        options = concatStringsSep "," mount.options;
+        wantedBy = [ "multi-user.target" ];
+      })
+      cfg.mounts;
 
-    systemd.tmpfiles.rules = map (mount:
-      "d ${mount.mountPoint} 0755 root root -"
-    ) cfg.mounts;
+    systemd.tmpfiles.rules = map
+      (mount:
+        "d ${mount.mountPoint} 0755 root root -"
+      )
+      cfg.mounts;
 
     # Generate the PowerShell script
     environment.etc."nixos-wsl/bare-mount.ps1" = mkIf cfg.generateScript {
@@ -384,86 +389,86 @@ in {
 
     # Copy script to Windows user profile on activation
     system.activationScripts.wsl-bare-mount-script = mkIf cfg.generateScript ''
-      # Get Windows username via cmd.exe (more reliable than whoami in WSL)
-      WINDOWS_USER=$(${pkgs.coreutils}/bin/cmd.exe /c "echo %USERNAME%" 2>/dev/null | ${pkgs.coreutils}/bin/tr -d '\r\n' || echo "")
+        # Get Windows username via cmd.exe (more reliable than whoami in WSL)
+        WINDOWS_USER=$(${pkgs.coreutils}/bin/cmd.exe /c "echo %USERNAME%" 2>/dev/null | ${pkgs.coreutils}/bin/tr -d '\r\n' || echo "")
       
-      # Fallback to checking actual directories if cmd.exe fails
-      if [ -z "$WINDOWS_USER" ]; then
-        # Look for a user directory that exists and isn't Default/Public/etc
-        for dir in /mnt/c/Users/*; do
-          basename_dir=$(basename "$dir")
-          if [ -d "$dir" ] && [ "$basename_dir" != "Default" ] && [ "$basename_dir" != "Public" ] && [ "$basename_dir" != "All Users" ] && [ "$basename_dir" != "Default User" ] && [ "$basename_dir" != "WsiAccount" ]; then
-            WINDOWS_USER="$basename_dir"
-            break
-          fi
-        done
-      fi
+        # Fallback to checking actual directories if cmd.exe fails
+        if [ -z "$WINDOWS_USER" ]; then
+          # Look for a user directory that exists and isn't Default/Public/etc
+          for dir in /mnt/c/Users/*; do
+            basename_dir=$(basename "$dir")
+            if [ -d "$dir" ] && [ "$basename_dir" != "Default" ] && [ "$basename_dir" != "Public" ] && [ "$basename_dir" != "All Users" ] && [ "$basename_dir" != "Default User" ] && [ "$basename_dir" != "WsiAccount" ]; then
+              WINDOWS_USER="$basename_dir"
+              break
+            fi
+          done
+        fi
       
-      if [ -z "$WINDOWS_USER" ]; then
-        echo "ERROR: Could not determine Windows username"
-        exit 1
-      fi
+        if [ -z "$WINDOWS_USER" ]; then
+          echo "ERROR: Could not determine Windows username"
+          exit 1
+        fi
       
-      WINDOWS_HOME="/mnt/c/Users/$WINDOWS_USER"
-      WSL_DIR="$WINDOWS_HOME/.nixos-wsl"
+        WINDOWS_HOME="/mnt/c/Users/$WINDOWS_USER"
+        WSL_DIR="$WINDOWS_HOME/.nixos-wsl"
 
-      if [ -d "$WINDOWS_HOME" ]; then
-        echo "Installing WSL bare mount scripts to Windows profile for user: $WINDOWS_USER"
-        mkdir -p "$WSL_DIR"
+        if [ -d "$WINDOWS_HOME" ]; then
+          echo "Installing WSL bare mount scripts to Windows profile for user: $WINDOWS_USER"
+          mkdir -p "$WSL_DIR"
 
-        # Copy the mount script
-        cp /etc/nixos-wsl/bare-mount.ps1 "$WSL_DIR/bare-mount.ps1" 2>/dev/null || true
+          # Copy the mount script
+          cp /etc/nixos-wsl/bare-mount.ps1 "$WSL_DIR/bare-mount.ps1" 2>/dev/null || true
 
-        # Copy the Task Scheduler XML
-        cp /etc/nixos-wsl/bare-mount-task.xml "$WSL_DIR/bare-mount-task.xml" 2>/dev/null || true
+          # Copy the Task Scheduler XML
+          cp /etc/nixos-wsl/bare-mount-task.xml "$WSL_DIR/bare-mount-task.xml" 2>/dev/null || true
 
-        # Copy the installer script
-        cp /etc/nixos-wsl/install-bare-mount-task.ps1 "$WSL_DIR/install-bare-mount-task.ps1" 2>/dev/null || true
+          # Copy the installer script
+          cp /etc/nixos-wsl/install-bare-mount-task.ps1 "$WSL_DIR/install-bare-mount-task.ps1" 2>/dev/null || true
 
-        # Create a simple batch file wrapper for easier execution
-        cat > "$WSL_DIR/bare-mount.bat" <<'EOF'
-    @echo off
-    powershell.exe -ExecutionPolicy Bypass -File "%~dp0bare-mount.ps1"
-    pause
-    EOF
+          # Create a simple batch file wrapper for easier execution
+          cat > "$WSL_DIR/bare-mount.bat" <<'EOF'
+      @echo off
+      powershell.exe -ExecutionPolicy Bypass -File "%~dp0bare-mount.ps1"
+      pause
+      EOF
 
-        # Create installer batch file
-        cat > "$WSL_DIR/install-task.bat" <<'EOF'
-    @echo off
-    echo This script will install a scheduled task to automatically mount bare disks
-    echo You must run this as Administrator
-    echo.
-    pause
-    powershell.exe -ExecutionPolicy Bypass -File "%~dp0install-bare-mount-task.ps1"
-    pause
-    EOF
+          # Create installer batch file
+          cat > "$WSL_DIR/install-task.bat" <<'EOF'
+      @echo off
+      echo This script will install a scheduled task to automatically mount bare disks
+      echo You must run this as Administrator
+      echo.
+      pause
+      powershell.exe -ExecutionPolicy Bypass -File "%~dp0install-bare-mount-task.ps1"
+      pause
+      EOF
 
-        echo "Mount scripts installed to: $WSL_DIR"
-        echo ""
-        echo "=== NEXT STEPS ==="
-        echo "1. For one-time mount, run as Administrator:"
-        echo "   $WSL_DIR\\bare-mount.ps1"
-        echo ""
-        echo "2. For automatic mounting on login, run as Administrator:"
-        echo "   $WSL_DIR\\install-bare-mount-task.ps1"
-        echo ""
-        echo "This will create a scheduled task that runs at user logon."
-        
-        ${optionalString cfg.autoInstallTask ''
+          echo "Mount scripts installed to: $WSL_DIR"
           echo ""
-          echo "=== AUTO-INSTALLING TASK SCHEDULER ==="
-          echo "Attempting to install the scheduled task automatically..."
-          echo "This will prompt for Administrator privileges..."
+          echo "=== NEXT STEPS ==="
+          echo "1. For one-time mount, run as Administrator:"
+          echo "   $WSL_DIR\\bare-mount.ps1"
+          echo ""
+          echo "2. For automatic mounting on login, run as Administrator:"
+          echo "   $WSL_DIR\\install-bare-mount-task.ps1"
+          echo ""
+          echo "This will create a scheduled task that runs at user logon."
+        
+          ${optionalString cfg.autoInstallTask ''
+            echo ""
+            echo "=== AUTO-INSTALLING TASK SCHEDULER ==="
+            echo "Attempting to install the scheduled task automatically..."
+            echo "This will prompt for Administrator privileges..."
           
-          # Try to auto-install the task (will trigger UAC prompt)
-          powershell.exe -Command "Start-Process powershell -ArgumentList '-ExecutionPolicy','Bypass','-File','$WSL_DIR\\install-bare-mount-task.ps1' -Verb RunAs -Wait" 2>/dev/null || {
-            echo "WARNING: Could not auto-install task. Please run manually:"
-            echo "  $WSL_DIR\\install-bare-mount-task.ps1"
-          }
-        ''}
-      else
-        echo "Warning: Could not find Windows home directory at $WINDOWS_HOME"
-      fi
+            # Try to auto-install the task (will trigger UAC prompt)
+            powershell.exe -Command "Start-Process powershell -ArgumentList '-ExecutionPolicy','Bypass','-File','$WSL_DIR\\install-bare-mount-task.ps1' -Verb RunAs -Wait" 2>/dev/null || {
+              echo "WARNING: Could not auto-install task. Please run manually:"
+              echo "  $WSL_DIR\\install-bare-mount-task.ps1"
+            }
+          ''}
+        else
+          echo "Warning: Could not find Windows home directory at $WINDOWS_HOME"
+        fi
     '';
 
     # Documentation

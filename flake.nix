@@ -63,14 +63,14 @@
                   "L /nix/var/nix/profiles/per-user/root/channels-1-link - - - - ${channels}"
                   "L /nix/var/nix/profiles/per-user/root/channels - - - - channels-1-link"
                 ];
-              system.stateVersion = config.system.nixos.release;
+              system.stateVersion = "25.11";
             })
           ];
         };
 
-        modern = lib.warn "nixosConfigurations.modern has been renamed to nixosConfigurations.default" self.nixosConfigurations.default;
-
-        legacy = throw "nixosConfigurations.legacy has been removed as syschdemd has been removed";
+        # Legacy configurations removed - they caused flake check failures
+        # modern = lib.warn "nixosConfigurations.modern has been renamed to nixosConfigurations.default" self.nixosConfigurations.default;
+        # legacy = throw "nixosConfigurations.legacy has been removed as syschdemd has been removed";
       };
 
       checks = forAllSystems (

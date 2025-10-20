@@ -4,6 +4,7 @@
   ];
 
   wsl.enable = true;
+  system.stateVersion = "25.11";
 
   # Test basic configuration
   wsl.bareMounts = {

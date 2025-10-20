@@ -5,10 +5,11 @@
 }:
 
 let
-  baseModule = { ... }: {
+  baseModule = { config, options, ... }: {
     imports = [ ../modules ];
     wsl.enable = true;
     wsl.defaultUser = "nixos";
+    system.stateVersion = options.system.stateVersion.default;
   };
   changedUsername = { lib, ... }: {
     wsl.defaultUser = lib.mkForce "different";

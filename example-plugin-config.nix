@@ -4,15 +4,15 @@
 {
   # Import NixOS-WSL modules
   imports = [ ./modules ];
-  
+
   # Enable WSL support
   wsl = {
     enable = true;
-    
+
     # Enable the WSL plugin disk management
     plugin = {
       enable = true;
-      
+
       # Configure bare disks that must be attached before boot
       disks.bare = [
         {
@@ -25,7 +25,7 @@
           label = "backup-disk";
         }
       ];
-      
+
       # Configure VHDX files to create and attach
       disks.vhdx = [
         {
@@ -42,7 +42,7 @@
       ];
     };
   };
-  
+
   # Example mount points for the attached disks
   # These would be configured based on your actual disk UUIDs
   fileSystems."/mnt/external-data" = {
@@ -50,13 +50,13 @@
     fsType = "ext4";
     options = [ "defaults" "nofail" ];
   };
-  
+
   fileSystems."/mnt/backup" = {
     device = "/dev/disk/by-uuid/f9c8b7a6-d5e4-b3a2-1234-56789abcdef0";
     fsType = "ext4";
     options = [ "defaults" "nofail" ];
   };
-  
+
   # The VHDX disks would be mounted after they're created and attached
   # You would need to determine their device paths after attachment
 }
