@@ -11,6 +11,7 @@
     ./welcome.nix
     ./wsl-bare-mount.nix
     ./wsl-conf.nix
+    ./wsl-cross-instance-mount.nix
     ./wsl-distro.nix
     ./wsl-plugin-config.nix
 
