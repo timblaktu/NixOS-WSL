@@ -2,3 +2,5 @@ result
 result-*
 nixos-wsl*.tar.gz
 nixos.wsl
+.claude/
+CLAUDE.md
