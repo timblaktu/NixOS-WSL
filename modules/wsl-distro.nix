@@ -66,7 +66,10 @@ in
   config = mkIf cfg.enable {
     # WSL uses its own kernel and boot loader
     boot = {
-      bootspec.enable = false;
+      # boot.bootspec.enable removed upstream (nixpkgs 2026): bootspec is now
+      # always generated and can no longer be disabled. Setting it is a hard
+      # eval error ("no longer has any effect; please remove it"). Dropping the
+      # line is the sanctioned migration. (nixcfg plan 053 T3, 2026-08-20)
       initrd.enable = false;
       kernel.enable = false;
       loader.grub.enable = false;
